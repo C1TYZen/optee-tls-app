@@ -2,11 +2,25 @@
 #include <tee_internal_api_extensions.h>
 #include <madtls_ta.h>
 
-#include <mbedtls/net.h>
-#include <mbedtls/ssl.h>
+// #include <mbedtls/net.h>
+// #include <mbedtls/ssl.h>
+// #include <mbedtls/entropy.h>
+// #include <mbedtls/ctr_drbg.h>
+// #include <mbedtls/debug.h>
+
+#define MBEDTLS_ENTROPY_HARDWARE_ALT
+
+#if !defined(MBEDTLS_CONFIG_FILE)
+#include <mbedtls/config.h>
+#else
+#include MBEDTLS_CONFIG_FILE
+#endif
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
-#include <mbedtls/debug.h>
+#include <mbedtls/ecdsa.h>
+#include <mbedtls/sha256.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/platform.h>
 
 /*
  * Called when the instance of the TA is created. This is the first call in
@@ -121,6 +135,9 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 			uint32_t param_types, TEE_Param params[4])
 {
 	(void)&sess_ctx; /* Unused parameter */
+	mbedtls_entropy_context x;
+
+	mbedtls_entropy_init(&x);
 
 	switch (cmd_id) {
 	case TA_MY_CMD_INC_VALUE:
