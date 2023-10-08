@@ -37,10 +37,17 @@
 		{ 0xab, 0xe2, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b} }
 
 /* The function IDs implemented in this TA */
-#define TA_MY_CMD_INC_VALUE		0
-#define TA_MY_CMD_DEC_VALUE		1
+#define TA_MY_CMD_INC_VALUE    0
+#define TA_MY_CMD_DEC_VALUE    1
+#define TA_TCP_SOCKET          2
+#define TA_SOCKET_CMD_TCP_OPEN 3
+#define TA_SOCKET_CMD_UDP_OPEN 4
+#define TA_SOCKET_CMD_CLOSE    5
+#define TA_SOCKET_CMD_SEND     6
+#define TA_SOCKET_CMD_RECV     7
+#define TA_SOCKET_CMD_ERROR    8
+#define TA_SOCKET_CMD_IOCTL    9
 
-#define TA_TCP_SOCKET                   0
 #define TA_SERVER_IP                    "10.0.2.2"
 #define TA_SERVER_PORT                  9999
 

@@ -1,15 +1,20 @@
+#include <stdlib.h>
+#include <string.h>
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
+#include <tee_isocket.h>
+#include <tee_tcpsocket.h>
+#include <tee_udpsocket.h>
+#include <trace.h>
+
 #include <madtls_ta.h>
 
-#include <tee_internal_api.h>
-#include <tee_internal_api_extensions.h>
-#include <tee_tcpsocket.h>
-
-// #include <mbedtls/ctr_drbg.h>
-// #include <mbedtls/entropy.h>
-// #include <mbedtls/net_sockets.h>
 // #include <mbedtls/ssl.h>
+
+struct sock_handle {
+	TEE_iSocketHandle ctx;
+	TEE_iSocket *socket;
+};
 
 // The first call in the TA
 TEE_Result TA_CreateEntryPoint(void) {
@@ -24,14 +29,16 @@ void TA_DestroyEntryPoint(void) {
 
 // Called when a new session is opened to the TA. In this function you will 
 // normally do the global initialization for the TA.
-TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
+TEE_Result TA_OpenSessionEntryPoint(
+		uint32_t param_types,
 		TEE_Param __maybe_unused params[4],
 		void __maybe_unused **sess_ctx)
 {
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE);
+	uint32_t exp_param_types = TEE_PARAM_TYPES(
+		TEE_PARAM_TYPE_NONE,
+	    TEE_PARAM_TYPE_NONE,
+	    TEE_PARAM_TYPE_NONE,
+	    TEE_PARAM_TYPE_NONE);
 
 	DMSG("has been called");
 	if (param_types != exp_param_types)
@@ -53,99 +60,237 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx) {
 	IMSG("Goodbye!\n");
 }
 
-TEE_Result TA_tcp_socket(uint32_t param_types, TEE_Param params[4]) {
-    TEE_Result res;
-	const uint32_t exp_param_types =
+static TEE_Result ta_entry_tcp_open(uint32_t param_types, TEE_Param params[4])
+{
+	TEE_Result res = TEE_ERROR_GENERIC;
+	struct sock_handle h = { };
+	TEE_tcpSocket_Setup setup = { };
+	uint32_t req_param_types = TEE_PARAM_TYPES(
+		TEE_PARAM_TYPE_VALUE_INPUT,
+		TEE_PARAM_TYPE_MEMREF_INPUT,
+		TEE_PARAM_TYPE_MEMREF_OUTPUT,
+		TEE_PARAM_TYPE_VALUE_OUTPUT);
+
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (params[2].memref.size < sizeof(struct sock_handle)) {
+		params[2].memref.size = sizeof(struct sock_handle);
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+
+    TEE_ipSocket_ipVersion ta_ip_version = TEE_IP_VERSION_4;
+    setup.ipVersion = ta_ip_version;
+	setup.server_port = params[0].value.b;
+	setup.server_addr = strndup(params[1].memref.buffer,
+				    params[1].memref.size);
+	if (!setup.server_addr)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	h.socket = TEE_tcpSocket;
+	res = h.socket->open(&h.ctx, &setup, &params[3].value.a);
+	free(setup.server_addr);
+	if (res == TEE_SUCCESS) {
+		memcpy(params[2].memref.buffer, &h, sizeof(h));
+		params[2].memref.size = sizeof(h);
+	}
+	return res;
+}
+
+static TEE_Result ta_entry_udp_open(uint32_t param_types, TEE_Param params[4])
+{
+	TEE_Result res = TEE_ERROR_GENERIC;
+	struct sock_handle h = { };
+	TEE_udpSocket_Setup setup = { };
+	uint32_t req_param_types =
+		TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
+				TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_MEMREF_OUTPUT,
+				TEE_PARAM_TYPE_VALUE_OUTPUT);
+
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (params[2].memref.size < sizeof(struct sock_handle)) {
+		params[2].memref.size = sizeof(struct sock_handle);
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+
+	setup.ipVersion = params[0].value.a;
+	setup.server_port = params[0].value.b;
+	setup.server_addr = strndup(params[1].memref.buffer,
+				    params[1].memref.size);
+	if (!setup.server_addr)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	h.socket = TEE_udpSocket;
+	res = h.socket->open(&h.ctx, &setup, &params[3].value.a);
+	free(setup.server_addr);
+	if (res == TEE_SUCCESS) {
+		memcpy(params[2].memref.buffer, &h, sizeof(h));
+		params[2].memref.size = sizeof(h);
+	}
+	return res;
+}
+
+static TEE_Result ta_entry_close(uint32_t param_types, TEE_Param params[4])
+{
+	struct sock_handle *h = NULL;
+	uint32_t req_param_types =
 		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
-				TEE_PARAM_TYPE_NONE,
+				TEE_PARAM_TYPE_NONE, TEE_PARAM_TYPE_NONE,
+				TEE_PARAM_TYPE_NONE);
+
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (params[0].memref.size != sizeof(struct sock_handle))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	h = params[0].memref.buffer;
+	return h->socket->close(h->ctx);
+}
+
+static TEE_Result ta_entry_send(uint32_t param_types, TEE_Param params[4])
+{
+	struct sock_handle *h = NULL;
+	uint32_t req_param_types =
+		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_VALUE_INOUT,
+				TEE_PARAM_TYPE_NONE);
+
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (params[0].memref.size != sizeof(*h))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	h = params[0].memref.buffer;
+	params[2].value.b = params[1].memref.size;
+	return h->socket->send(h->ctx, params[1].memref.buffer,
+			       &params[2].value.b, params[2].value.a);
+}
+
+static TEE_Result ta_entry_recv(uint32_t param_types, TEE_Param params[4])
+{
+	TEE_Result res = TEE_SUCCESS;
+	struct sock_handle *h = NULL;
+	uint32_t req_param_types =
+		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_MEMREF_OUTPUT,
+				TEE_PARAM_TYPE_VALUE_INPUT,
+				TEE_PARAM_TYPE_NONE);
+	uint32_t sz = 0;
+
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (params[0].memref.size != sizeof(struct sock_handle))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	h = params[0].memref.buffer;
+	sz = params[1].memref.size;
+	res = h->socket->recv(h->ctx, params[1].memref.buffer, &sz,
+			      params[2].value.a);
+	params[1].memref.size = sz;
+	return res;
+}
+
+static TEE_Result ta_entry_error(uint32_t param_types, TEE_Param params[4])
+{
+	struct sock_handle *h = NULL;
+	uint32_t req_param_types =
+		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_VALUE_OUTPUT,
 				TEE_PARAM_TYPE_NONE,
 				TEE_PARAM_TYPE_NONE);
 
-	if (param_types != exp_param_types)
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (params[0].memref.size != sizeof(struct sock_handle))
 		return TEE_ERROR_BAD_PARAMETERS;
 
-    // TCP Socket Set Up
-    TEE_ipSocket_ipVersion ta_ip_version = TEE_IP_VERSION_4;
-    TEE_tcpSocket_Setup *tcp_socket_setup;
-    tcp_socket_setup = TEE_Malloc(sizeof *tcp_socket_setup,
-            TEE_MALLOC_FILL_ZERO);
-    tcp_socket_setup->ipVersion = ta_ip_version;
-    tcp_socket_setup->server_addr = TA_SERVER_IP;
-    tcp_socket_setup->server_port = TA_SERVER_PORT;
-    TEE_iSocketHandle *tee_socket_handle;
-    // Measure time here
-    tee_socket_handle = TEE_Malloc(sizeof *tee_socket_handle,
-            TEE_MALLOC_FILL_ZERO);
-
-    // Define Socket
-    uint32_t error_code;
-    // Measure Time
-    res = (*TEE_tcpSocket->open)(tee_socket_handle, tcp_socket_setup,
-            &error_code);
-    // Measure Time
-    res = (*TEE_tcpSocket->send)(tee_socket_handle, params[0].memref.buffer,
-            params[0].memref.size, 60);
-    // Fails at core/arch/arm/tee/pta_socket.c -> send
-    res = (*TEE_tcpSocket->close)(tee_socket_handle);
-
-    printf("%s\n", (char *) params[0].memref.buffer);
-
-    return TEE_SUCCESS;
-}
-
-static TEE_Result inc_value(uint32_t param_types, TEE_Param params[4]) {
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE);
-
-	DMSG("has been called");
-
-	if (param_types != exp_param_types)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	IMSG("GHOT Ah value: %u from NW", params[0].value.a);
-	params[0].value.a++;
-	IMSG("INCREASE YOUR ASS to: %u", params[0].value.a);
-
+	h = params[0].memref.buffer;
+	params[1].value.a = h->socket->error(h->ctx);
 	return TEE_SUCCESS;
 }
 
-static TEE_Result dec_value(uint32_t param_types,
-	TEE_Param params[4])
+static TEE_Result ta_entry_ioctl(uint32_t param_types, TEE_Param params[4])
 {
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE);
+	TEE_Result res = TEE_SUCCESS;
+	struct sock_handle *h = NULL;
+	uint32_t req_param_types =
+		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_MEMREF_INOUT,
+				TEE_PARAM_TYPE_VALUE_INPUT,
+				TEE_PARAM_TYPE_NONE);
+	uint32_t sz = 0;
 
-	DMSG("has been called");
+	if (param_types != req_param_types) {
+		EMSG("got param_types 0x%x, expected 0x%x",
+			param_types, req_param_types);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
 
-	if (param_types != exp_param_types)
+	if (params[0].memref.size != sizeof(struct sock_handle))
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	IMSG("GHOST value: %u from NW", params[0].value.a);
-	params[0].value.a--;
-	IMSG("Decrease YOUR MOM value to: %u", params[0].value.a);
-
-	return TEE_SUCCESS;
+	h = params[0].memref.buffer;
+	sz = params[1].memref.size;
+	res = h->socket->ioctl(h->ctx, params[2].value.a,
+			       params[1].memref.buffer, &sz);
+	params[1].memref.size = sz;
+	return res;
 }
 
 // Called when a TA is invoked. sess_ctx hold that value that was
 // assigned by TA_OpenSessionEntryPoint(). The rest of the paramters
 // comes from normal world.
-TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
-			uint32_t cmd_id,
-			uint32_t param_types, TEE_Param params[4])
+TEE_Result TA_InvokeCommandEntryPoint(
+	void __maybe_unused *sess_ctx,
+	uint32_t cmd_id,
+	uint32_t param_types,
+	TEE_Param params[4])
 {
 	(void)&sess_ctx; /* Unused parameter */
 
 	switch (cmd_id) {
-	case TA_MY_CMD_INC_VALUE:
-		return inc_value(param_types, params);
-	case TA_MY_CMD_DEC_VALUE:
-		return dec_value(param_types, params);
+	case TA_SOCKET_CMD_TCP_OPEN:
+		return ta_entry_tcp_open(param_types, params);
+	case TA_SOCKET_CMD_UDP_OPEN:
+		return ta_entry_udp_open(param_types, params);
+	case TA_SOCKET_CMD_CLOSE:
+		return ta_entry_close(param_types, params);
+	case TA_SOCKET_CMD_SEND:
+		return ta_entry_send(param_types, params);
+	case TA_SOCKET_CMD_RECV:
+		return ta_entry_recv(param_types, params);
+	case TA_SOCKET_CMD_ERROR:
+		return ta_entry_error(param_types, params);
+	case TA_SOCKET_CMD_IOCTL:
+		return ta_entry_ioctl(param_types, params);
 	default:
+		EMSG("Command ID 0x%x is not supported", cmd_id);
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
 }
