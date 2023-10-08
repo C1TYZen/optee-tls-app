@@ -2,52 +2,28 @@
 #include <tee_internal_api_extensions.h>
 #include <madtls_ta.h>
 
-// #include <mbedtls/net.h>
-// #include <mbedtls/ssl.h>
-// #include <mbedtls/entropy.h>
+#include <tee_internal_api.h>
+#include <tee_internal_api_extensions.h>
+#include <tee_tcpsocket.h>
+
 // #include <mbedtls/ctr_drbg.h>
-// #include <mbedtls/debug.h>
+// #include <mbedtls/entropy.h>
+// #include <mbedtls/net_sockets.h>
+// #include <mbedtls/ssl.h>
 
-#define MBEDTLS_ENTROPY_HARDWARE_ALT
-
-#if !defined(MBEDTLS_CONFIG_FILE)
-#include <mbedtls/config.h>
-#else
-#include MBEDTLS_CONFIG_FILE
-#endif
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/ecdsa.h>
-#include <mbedtls/sha256.h>
-#include <mbedtls/pk.h>
-#include <mbedtls/platform.h>
-
-/*
- * Called when the instance of the TA is created. This is the first call in
- * the TA.
- */
-TEE_Result TA_CreateEntryPoint(void)
-{
+// The first call in the TA
+TEE_Result TA_CreateEntryPoint(void) {
 	DMSG("has been called");
-
 	return TEE_SUCCESS;
 }
 
-/*
- * Called when the instance of the TA is destroyed if the TA has not
- * crashed or panicked. This is the last call in the TA.
- */
-void TA_DestroyEntryPoint(void)
-{
+// The last call in the TA.
+void TA_DestroyEntryPoint(void) {
 	DMSG("has been called");
 }
 
-/*
- * Called when a new session is opened to the TA. *sess_ctx can be updated
- * with a value to be able to identify this session in subsequent calls to the
- * TA. In this function you will normally do the global initialization for the
- * TA.
- */
+// Called when a new session is opened to the TA. In this function you will 
+// normally do the global initialization for the TA.
 TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 		TEE_Param __maybe_unused params[4],
 		void __maybe_unused **sess_ctx)
@@ -58,37 +34,66 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 						   TEE_PARAM_TYPE_NONE);
 
 	DMSG("has been called");
-
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
-
 	/* Unused parameters */
 	(void)&params;
 	(void)&sess_ctx;
-
-	/*
-	 * The DMSG() macro is non-standard, TEE Internal API doesn't
-	 * specify any means to logging from a TA.
-	 */
+	// The DMSG() macro is non-standard, TEE Internal API doesn't
+	// specify any means to logging from a TA.
 	IMSG("Hello World!\n");
 
-	/* If return value != TEE_SUCCESS the session will not be created. */
 	return TEE_SUCCESS;
 }
 
-/*
- * Called when a session is closed, sess_ctx hold the value that was
- * assigned by TA_OpenSessionEntryPoint().
- */
-void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
-{
+// Called when a session is closed, sess_ctx hold the value that was
+// assigned by TA_OpenSessionEntryPoint().
+void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx) {
 	(void)&sess_ctx; /* Unused parameter */
 	IMSG("Goodbye!\n");
 }
 
-static TEE_Result inc_value(uint32_t param_types,
-	TEE_Param params[4])
-{
+TEE_Result TA_tcp_socket(uint32_t param_types, TEE_Param params[4]) {
+    TEE_Result res;
+	const uint32_t exp_param_types =
+		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+				TEE_PARAM_TYPE_NONE,
+				TEE_PARAM_TYPE_NONE,
+				TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+    // TCP Socket Set Up
+    TEE_ipSocket_ipVersion ta_ip_version = TEE_IP_VERSION_4;
+    TEE_tcpSocket_Setup *tcp_socket_setup;
+    tcp_socket_setup = TEE_Malloc(sizeof *tcp_socket_setup,
+            TEE_MALLOC_FILL_ZERO);
+    tcp_socket_setup->ipVersion = ta_ip_version;
+    tcp_socket_setup->server_addr = TA_SERVER_IP;
+    tcp_socket_setup->server_port = TA_SERVER_PORT;
+    TEE_iSocketHandle *tee_socket_handle;
+    // Measure time here
+    tee_socket_handle = TEE_Malloc(sizeof *tee_socket_handle,
+            TEE_MALLOC_FILL_ZERO);
+
+    // Define Socket
+    uint32_t error_code;
+    // Measure Time
+    res = (*TEE_tcpSocket->open)(tee_socket_handle, tcp_socket_setup,
+            &error_code);
+    // Measure Time
+    res = (*TEE_tcpSocket->send)(tee_socket_handle, params[0].memref.buffer,
+            params[0].memref.size, 60);
+    // Fails at core/arch/arm/tee/pta_socket.c -> send
+    res = (*TEE_tcpSocket->close)(tee_socket_handle);
+
+    printf("%s\n", (char *) params[0].memref.buffer);
+
+    return TEE_SUCCESS;
+}
+
+static TEE_Result inc_value(uint32_t param_types, TEE_Param params[4]) {
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
 						   TEE_PARAM_TYPE_NONE,
 						   TEE_PARAM_TYPE_NONE,
@@ -125,19 +130,15 @@ static TEE_Result dec_value(uint32_t param_types,
 
 	return TEE_SUCCESS;
 }
-/*
- * Called when a TA is invoked. sess_ctx hold that value that was
- * assigned by TA_OpenSessionEntryPoint(). The rest of the paramters
- * comes from normal world.
- */
+
+// Called when a TA is invoked. sess_ctx hold that value that was
+// assigned by TA_OpenSessionEntryPoint(). The rest of the paramters
+// comes from normal world.
 TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 			uint32_t cmd_id,
 			uint32_t param_types, TEE_Param params[4])
 {
 	(void)&sess_ctx; /* Unused parameter */
-	mbedtls_entropy_context x;
-
-	mbedtls_entropy_init(&x);
 
 	switch (cmd_id) {
 	case TA_MY_CMD_INC_VALUE:

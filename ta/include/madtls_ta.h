@@ -40,4 +40,8 @@
 #define TA_MY_CMD_INC_VALUE		0
 #define TA_MY_CMD_DEC_VALUE		1
 
+#define TA_TCP_SOCKET                   0
+#define TA_SERVER_IP                    "10.0.2.2"
+#define TA_SERVER_PORT                  9999
+
 #endif /*TA_MY_H*/
