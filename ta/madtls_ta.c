@@ -40,7 +40,6 @@ TEE_Result TA_OpenSessionEntryPoint(
 	    TEE_PARAM_TYPE_NONE,
 	    TEE_PARAM_TYPE_NONE);
 
-	DMSG("has been called");
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 	/* Unused parameters */
@@ -62,9 +61,10 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx) {
 
 static TEE_Result ta_entry_tcp_open(uint32_t param_types, TEE_Param params[4])
 {
+	IMSG("*** OPEN");
 	TEE_Result res = TEE_ERROR_GENERIC;
-	struct sock_handle h = { };
-	TEE_tcpSocket_Setup setup = { };
+	struct sock_handle h = { 0 };
+	TEE_tcpSocket_Setup setup = { 0 };
 	uint32_t req_param_types = TEE_PARAM_TYPES(
 		TEE_PARAM_TYPE_VALUE_INPUT,
 		TEE_PARAM_TYPE_MEMREF_INPUT,
@@ -72,8 +72,7 @@ static TEE_Result ta_entry_tcp_open(uint32_t param_types, TEE_Param params[4])
 		TEE_PARAM_TYPE_VALUE_OUTPUT);
 
 	if (param_types != req_param_types) {
-		EMSG("got param_types 0x%x, expected 0x%x",
-			param_types, req_param_types);
+		EMSG("got param_types 0x%x, expected 0x%x", param_types, req_param_types);
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
 
@@ -85,12 +84,12 @@ static TEE_Result ta_entry_tcp_open(uint32_t param_types, TEE_Param params[4])
     TEE_ipSocket_ipVersion ta_ip_version = TEE_IP_VERSION_4;
     setup.ipVersion = ta_ip_version;
 	setup.server_port = params[0].value.b;
-	setup.server_addr = strndup(params[1].memref.buffer,
-				    params[1].memref.size);
+	setup.server_addr = strndup(params[1].memref.buffer, params[1].memref.size);
 	if (!setup.server_addr)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
 	h.socket = TEE_tcpSocket;
+	IMSG("*** setup: %s %d", setup.server_addr, setup.server_port);
 	res = h.socket->open(&h.ctx, &setup, &params[3].value.a);
 	free(setup.server_addr);
 	if (res == TEE_SUCCESS) {
@@ -186,13 +185,14 @@ static TEE_Result ta_entry_send(uint32_t param_types, TEE_Param params[4])
 
 static TEE_Result ta_entry_recv(uint32_t param_types, TEE_Param params[4])
 {
+	IMSG("*** RECEIVE called");
 	TEE_Result res = TEE_SUCCESS;
 	struct sock_handle *h = NULL;
-	uint32_t req_param_types =
-		TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
-				TEE_PARAM_TYPE_MEMREF_OUTPUT,
-				TEE_PARAM_TYPE_VALUE_INPUT,
-				TEE_PARAM_TYPE_NONE);
+	uint32_t req_param_types = TEE_PARAM_TYPES(
+		TEE_PARAM_TYPE_MEMREF_INPUT,
+		TEE_PARAM_TYPE_MEMREF_OUTPUT,
+		TEE_PARAM_TYPE_VALUE_INPUT,
+		TEE_PARAM_TYPE_NONE);
 	uint32_t sz = 0;
 
 	if (param_types != req_param_types) {
@@ -206,9 +206,12 @@ static TEE_Result ta_entry_recv(uint32_t param_types, TEE_Param params[4])
 
 	h = params[0].memref.buffer;
 	sz = params[1].memref.size;
-	res = h->socket->recv(h->ctx, params[1].memref.buffer, &sz,
-			      params[2].value.a);
+	IMSG("*** RECEIVE");
+	// res = h->socket->recv(h->ctx, params[1].memref.buffer, &sz, params[2].value.a);
+	res = h->socket->recv(h->ctx, params[1].memref.buffer, &sz, params[2].value.a);
 	params[1].memref.size = sz;
+
+	IMSG("*** RECEIVE finished");
 	return res;
 }
 

@@ -32,13 +32,16 @@ struct socket_handle {
 };
 
 TEEC_Result socket_tcp_open(
-	TEEC_Session *session, uint32_t ip_vers,
-	const char *addr, uint16_t port,
-	struct socket_handle *handle,
-	uint32_t *error, uint32_t *ret_orig)
+		TEEC_Session *session,
+		uint32_t ip_vers,
+		const char *addr,
+		uint16_t port,
+		struct socket_handle *handle,
+		uint32_t *error,
+		uint32_t *ret_orig)
 {
 	TEEC_Result res = TEEC_ERROR_GENERIC;
-	TEEC_Operation op = { };
+	TEEC_Operation op = { 0 };
 
 	memset(handle, 0, sizeof(*handle));
 
@@ -55,8 +58,7 @@ TEEC_Result socket_tcp_open(
 		TEEC_MEMREF_TEMP_OUTPUT,
 		TEEC_VALUE_OUTPUT);
 
-	res = TEEC_InvokeCommand(session, TA_SOCKET_CMD_TCP_OPEN,
-				&op, ret_orig);
+	res = TEEC_InvokeCommand(session, TA_SOCKET_CMD_TCP_OPEN, &op, ret_orig);
 
 	handle->blen = op.params[2].tmpref.size;
 	*error = op.params[3].value.a;
@@ -64,10 +66,13 @@ TEEC_Result socket_tcp_open(
 }
 
 static TEEC_Result socket_udp_open(
-		TEEC_Session *session, uint32_t ip_vers,
-		const char *addr, uint16_t port,
+		TEEC_Session *session,
+		uint32_t ip_vers,
+		const char *addr,
+		uint16_t port,
 		struct socket_handle *handle,
-		uint32_t *error, uint32_t *ret_orig)
+		uint32_t *error,
+		uint32_t *ret_orig)
 {
 	TEEC_Result res = TEEC_ERROR_GENERIC;
 	TEEC_Operation op = { };
@@ -98,8 +103,10 @@ static TEEC_Result socket_udp_open(
 static TEEC_Result socket_send(
 		TEEC_Session *session,
 		struct socket_handle *handle,
-		const void *data, size_t *dlen,
-		uint32_t timeout, uint32_t *ret_orig)
+		const void *data,
+		size_t *dlen,
+		uint32_t timeout,
+		uint32_t *ret_orig)
 {
 	TEEC_Result res = TEEC_ERROR_GENERIC;
 	TEEC_Operation op = { };
@@ -124,11 +131,13 @@ static TEEC_Result socket_send(
 static TEEC_Result socket_recv(
 		TEEC_Session *session,
 		struct socket_handle *handle,
-		void *data, size_t *dlen,
-		uint32_t timeout, uint32_t *ret_orig)
+		void *data,
+		size_t *dlen,
+		uint32_t timeout,
+		uint32_t *ret_orig)
 {
 	TEEC_Result res = TEEC_ERROR_GENERIC;
-	TEEC_Operation op = { };
+	TEEC_Operation op = { 0 };
 
 	op.params[0].tmpref.buffer = handle->buf;
 	op.params[0].tmpref.size = handle->blen;
@@ -209,75 +218,50 @@ static TEEC_Result socket_ioctl(
 	return res;
 }
 
-int main(void)
-{
-	TEEC_Result res;
-	TEEC_Context ctx;
-	TEEC_Session session;
-	TEEC_Operation op;
+int main(void) {
+	TEEC_Result res = { 0 };
+	TEEC_Context ctx = { 0 };
+	TEEC_Session session = { 0 };
+	TEEC_Operation op = { 0 };
 	TEEC_UUID uuid = TA_MY_UUID;
-	uint32_t err_origin;
-	char server_message[256] = "You have reached the server!";
-	int server_socket;
-	int client_socket;
+	uint32_t err_origin = { 0 };
+	struct socket_handle handle = { 0 };
+	uint8_t buf[64] = { 0 };
+	size_t blen = 8;
 
 	// Initialize a context connecting us to the TEE
 	res = TEEC_InitializeContext(NULL, &ctx);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
-	res = TEEC_OpenSession(&ctx, &session, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+
+	res = TEEC_OpenSession(
+			&ctx, &session, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x", res, err_origin);
-	// Clear the TEEC_Operation struct
-	memset(&op, 0, sizeof(op));
-	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INOUT, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+
+	op.paramTypes = TEEC_PARAM_TYPES(
+		TEEC_VALUE_INOUT,
+		TEEC_NONE,
+		TEEC_NONE,
+		TEEC_NONE
+	);
 	op.params[0].value.a = 42;
 
-	// create the server socket
-	// if((server_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    //     perror("Socket Failed");
-    //     return -1;
-    // }
-    // puts("Socket created");
-
-	// // define the server address
-	// struct sockaddr_in server_addr;
-	// server_addr.sin_family = AF_INET;
-	// server_addr.sin_port = htons(9002);
-	// server_addr.sin_addr.s_addr = INADDR_ANY;
-    // puts("Socket defined");
-
-	// if((bind(server_socket, (struct sockaddr*) &server_addr, sizeof(server_addr))) < 0) {
-    //     perror("Bind Failed");
-    //     return -1;
-    // }
-    // puts("Socket binded");
-
-	// if(listen(server_socket, 5) < 0) {
-    //     perror("Listen Failed");
-    //     return -1;
-    // }
-    // puts("Listening...");
-
-	// if((client_socket = accept(server_socket, NULL, NULL)) < 0) {
-    //     perror("Accept Failed");
-    //     return -1;
-    // }
-    // puts("Accepted!");
-
-	// send(client_socket, server_message, sizeof(server_message), 0);
-
-	struct socket_handle handle = { };
 	uint32_t proto_error = 9;
 	if (!socket_tcp_open(
-		&session, NULL, TA_SERVER_IP, TA_SERVER_PORT,
-		&handle, &proto_error, &err_origin))
+			&session, NULL, "127.0.0.1", 9999,
+			&handle, &proto_error, &err_origin))
 	{
-		printf("TEE TCP Socket failure!\n");
+		printf("TEE TCP Socket open failure!\n");
 		return 1;
 	}
 
-	close(server_socket);
+	if (!socket_recv(&session, &handle, buf, &blen, NULL, &err_origin))
+	{
+		printf("TEE TCP Socket receive failure!\n");
+		return 1;
+	}
+
 	TEEC_CloseSession(&session);
 	TEEC_FinalizeContext(&ctx);
 
