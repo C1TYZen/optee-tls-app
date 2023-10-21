@@ -7,7 +7,7 @@
 #include <tee_udpsocket.h>
 #include <trace.h>
 
-#include <madtls_ta.h>
+#include <tls_ta.h>
 
 // #include <mbedtls/ssl.h>
 
@@ -45,9 +45,30 @@ TEE_Result TA_OpenSessionEntryPoint(
 	/* Unused parameters */
 	(void)&params;
 	(void)&sess_ctx;
-	// The DMSG() macro is non-standard, TEE Internal API doesn't
-	// specify any means to logging from a TA.
+
 	IMSG("Hello World!\n");
+
+	TEE_iSocketHandle ctx;
+	TEE_iSocket *socket;
+	TEE_tcpSocket_Setup setup = { 0 };
+	TEE_Result res = TEE_SUCCESS;
+	char server_ret[64] = { 0 };
+	uint32_t server_err = 0;
+	char server_ip[16] = "127.0.0.1";
+
+    setup.ipVersion = TEE_IP_VERSION_4;
+	setup.server_port = (uint16_t)9000;
+	setup.server_addr = server_ip;
+
+	socket = TEE_tcpSocket;
+	IMSG("*** setup: %s %d", setup.server_addr, setup.server_port);
+	res = socket->open(&ctx, &setup, &server_err);
+
+	uint32_t *sz = sizeof(server_ret);
+	res = socket->recv(ctx, NULL, 0, server_err);
+	IMSG("*** RECEIVE: %s", server_ret);
+
+	res = socket->close(ctx);
 
 	return TEE_SUCCESS;
 }

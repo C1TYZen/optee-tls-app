@@ -12,7 +12,7 @@ CFLAGS += -Wall -I../ta/include -I$(TEEC_EXPORT)/include -I./include
 #Add/link other required libraries here
 LDADD += -lteec -L$(TEEC_EXPORT)/lib
 
-BINARY = optee_example_madtls_client
+BINARY = optee_tls_client
 
 .PHONY: all
 all: $(BINARY)

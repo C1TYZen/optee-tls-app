@@ -33,7 +33,7 @@
 #define USER_TA_HEADER_DEFINES_H
 
 /* To get the TA UUID definition */
-#include <madtls_ta.h>
+#include <tls_ta.h>
 
 #define TA_UUID				TA_MY_UUID
 

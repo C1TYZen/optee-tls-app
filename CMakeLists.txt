@@ -1,6 +1,6 @@
-project (optee_example_madtls_server C)
+project (optee_tls_client C)
 
-set (SRC host/main.c)
+set (SRC client/main.c)
 
 add_executable (${PROJECT_NAME} ${SRC})
 
@@ -12,9 +12,9 @@ target_link_libraries (${PROJECT_NAME} PRIVATE teec)
 
 install (TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-project (optee_example_madtls_client C)
+project (optee_tls_server C)
 
-set (SRC client/main.c)
+set (SRC server/main.c)
 
 add_executable (${PROJECT_NAME} ${SRC})
 
