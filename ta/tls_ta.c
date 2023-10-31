@@ -50,7 +50,8 @@ TEE_Result TA_OpenSessionEntryPoint(
 
 	TEE_iSocketHandle ctx;
 	TEE_iSocket *socket;
-	TEE_tcpSocket_Setup setup = { 0 };
+	// TEE_tcpSocket_Setup setup = { 0 };
+	TEE_udpSocket_Setup setup = { 0 };
 	TEE_Result res = TEE_SUCCESS;
 	char server_ret[64] = { 0 };
 	uint32_t server_err = 0;
@@ -60,12 +61,12 @@ TEE_Result TA_OpenSessionEntryPoint(
 	setup.server_port = (uint16_t)9000;
 	setup.server_addr = server_ip;
 
-	socket = TEE_tcpSocket;
+	socket = TEE_udpSocket;
 	IMSG("*** setup: %s %d", setup.server_addr, setup.server_port);
 	res = socket->open(&ctx, &setup, &server_err);
 
-	uint32_t *sz = sizeof(server_ret);
-	res = socket->recv(ctx, NULL, 0, server_err);
+	uint32_t sz = sizeof(server_ret);
+	res = socket->recv(ctx, server_ret, &sz, server_err);
 	IMSG("*** RECEIVE: %s", server_ret);
 
 	res = socket->close(ctx);
